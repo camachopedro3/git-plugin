@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Git Plugin
  * Description: Install plugins straight from a Git repository (GitHub, GitLab, Bitbucket, Gitea/Forgejo). Adds a "Git Plugin" button next to "Upload Plugin".
- * Version: 1.0.0
+ * Version: 1.0.1
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Web9SEO
@@ -38,31 +38,42 @@ class Git_Plugin
             return;
         }
         ?>
-        <div class="upload-plugin git-plugin-panel" hidden>
+        <?php // Own classes on purpose: core JS disables the submit of any .wp-upload-form until a file is picked. ?>
+        <div class="git-plugin-panel" hidden>
             <p class="install-help">Install a plugin from a Git repository: GitHub, GitLab, Bitbucket, Gitea or Forgejo.</p>
-            <form method="post" class="wp-upload-form" action="<?php echo esc_url(self_admin_url('update.php?action=' . self::ACTION)); ?>">
+            <form method="post" class="git-plugin-form" action="<?php echo esc_url(self_admin_url('update.php?action=' . self::ACTION)); ?>">
                 <?php wp_nonce_field(self::ACTION); ?>
-                <p><label for="git-plugin-repo" class="screen-reader-text">Repository URL</label>
-                    <input type="text" id="git-plugin-repo" name="repo" class="large-text code" required
-                           placeholder="https://github.com/owner/repo  ·  git@host:owner/repo.git  ·  owner/repo"></p>
-                <p><label for="git-plugin-ref" class="screen-reader-text">Branch, tag or commit</label>
-                    <input type="text" id="git-plugin-ref" name="ref" class="regular-text code" placeholder="Branch, tag or commit (default branch)"></p>
+                <div class="git-plugin-row">
+                    <label class="git-plugin-repo">Repository URL
+                        <input type="text" id="git-plugin-repo" name="repo" class="code" required
+                               placeholder="https://github.com/owner/repo  ·  git@host:owner/repo.git  ·  owner/repo"></label>
+                    <label class="git-plugin-ref">Branch / tag
+                        <input type="text" id="git-plugin-ref" name="ref" class="code" placeholder="default"></label>
+                </div>
                 <details>
                     <summary>Private repository</summary>
                     <p><label for="git-plugin-token">Access token</label><br>
                         <input type="password" id="git-plugin-token" name="token" class="regular-text code" autocomplete="off">
                         <br><span class="description">Used for this download only, never stored.</span></p>
                 </details>
-                <p><input type="submit" class="button" value="Install Now"></p>
+                <p><input type="submit" class="button button-primary" value="Install Now"></p>
             </form>
         </div>
         <style>
-            .git-plugin-panel { display: none; }
+            .git-plugin-panel { display: none; text-align: center; margin: 30px 0; }
             .show-git-plugin-view .git-plugin-panel { display: block; }
-            .show-git-plugin-view .upload-plugin-wrap .upload-plugin, .show-git-plugin-view .wp-filter, .show-git-plugin-view #plugin-filter { display: none; }
-            .git-plugin-panel .wp-upload-form { text-align: left; }
-            .git-plugin-panel .wp-upload-form p { margin: 0 0 12px; }
-            .git-plugin-panel details { margin-bottom: 12px; }
+            .show-git-plugin-view .wp-filter, .show-git-plugin-view #plugin-filter { display: none; }
+            .git-plugin-panel .install-help { color: #50575e; font-size: 18px; margin: 0; }
+            .git-plugin-form { display: inline-block; width: min(880px, 100%); box-sizing: border-box; margin: 30px 0 0; padding: 24px 30px 12px;
+                border: 1px solid #c3c4c7; background: #f6f7f7; text-align: left; }
+            .git-plugin-form p { margin: 0 0 12px; }
+            .git-plugin-row { display: flex; gap: 12px; margin-bottom: 12px; }
+            .git-plugin-row label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; min-width: 0; }
+            .git-plugin-row input { width: 100%; padding: 6px 10px; font-size: 14px; }
+            .git-plugin-repo { flex: 4; } /* URLs are long, ref names short: 4:1 */
+            .git-plugin-ref { flex: 1; }
+            .git-plugin-form details { margin-bottom: 12px; }
+            @media (max-width: 600px) { .git-plugin-row { flex-direction: column; } }
         </style>
         <script>
         (function () {

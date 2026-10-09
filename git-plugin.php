@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Git Plugin
- * Description: Install plugins straight from a Git repository (GitHub, GitLab, Bitbucket, Gitea/Forgejo). Adds a "Git Plugin" button next to "Upload Plugin".
- * Version: 1.0.1
+ * Description: Install plugins straight from a Git repository (GitHub, GitLab, Bitbucket, Gitea/Forgejo), and download any installed plugin as a zip.
+ * Version: 1.1.0
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Web9SEO
@@ -29,6 +29,70 @@ class Git_Plugin
         add_action('admin_footer-plugin-install.php', [__CLASS__, 'panel']);
         // update.php fires update-custom_{action} for actions it doesn't know: the same screen Upload Plugin uses.
         add_action('update-custom_' . self::ACTION, [__CLASS__, 'install']);
+        add_filter('plugin_action_links', [__CLASS__, 'download_link'], 10, 2);
+        add_filter('network_admin_plugin_action_links', [__CLASS__, 'download_link'], 10, 2);
+        add_action('admin_post_git_plugin_download', [__CLASS__, 'download_zip']);
+    }
+
+    public static function download_link(array $links, string $file): array
+    {
+        if (current_user_can('install_plugins') && file_exists(WP_PLUGIN_DIR . '/' . $file)) {
+            $url = wp_nonce_url(admin_url('admin-post.php?action=git_plugin_download&plugin=' . rawurlencode($file)), 'git_plugin_download_' . $file);
+            $links['git_plugin_download'] = '<a href="' . esc_url($url) . '">Download</a>';
+        }
+        return $links;
+    }
+
+    /** Zip an installed plugin with its folder as the top level, so Upload Plugin re-installs it as-is. */
+    public static function download_zip(): void
+    {
+        $file = wp_unslash($_GET['plugin'] ?? '');
+        if (!current_user_can('install_plugins')) {
+            wp_die(__('Sorry, you are not allowed to do that.'), 403);
+        }
+        check_admin_referer('git_plugin_download_' . $file);
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        if (!isset(get_plugins()[$file])) { // only real installed plugins: no paths from the query string
+            wp_die('Plugin not found.', 404);
+        }
+        $version = get_plugins()[$file]['Version'];
+        $folder = dirname($file);
+        $single = $folder === '.'; // e.g. hello.php lives directly in wp-content/plugins
+        $slug = $single ? basename($file, '.php') : $folder;
+        @set_time_limit(0);
+
+        $tmp = wp_tempnam('git-plugin-dl-' . $slug . '.zip');
+        $zip = new ZipArchive();
+        if ($zip->open($tmp, ZipArchive::OVERWRITE) !== true) {
+            wp_die('Could not create the zip file.');
+        }
+        if ($single) {
+            $zip->addFile(WP_PLUGIN_DIR . '/' . $file, basename($file));
+        } else {
+            $root = WP_PLUGIN_DIR . '/' . $folder;
+            $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+            foreach ($files as $f) {
+                $rel = substr($f->getPathname(), strlen($root) + 1);
+                if (!$f->isFile() || preg_match('#(^|/)\.(git|svn|hg)(/|$)#', $rel)) {
+                    continue; // version-control data stays out of the download
+                }
+                $zip->addFile($f->getPathname(), $folder . '/' . $rel);
+            }
+        }
+        if (!$zip->close()) {
+            @unlink($tmp);
+            wp_die('Could not write the zip file.');
+        }
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        nocache_headers();
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . $slug . ($version !== '' ? '-' . sanitize_file_name($version) : '') . '.zip"');
+        header('Content-Length: ' . filesize($tmp));
+        readfile($tmp);
+        @unlink($tmp);
+        exit;
     }
 
     /** The button and the form, moved into place next to "Upload Plugin" by a few lines of JS. */

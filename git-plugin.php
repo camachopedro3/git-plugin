@@ -2,15 +2,18 @@
 /**
  * Plugin Name: Git Plugin
  * Description: Install plugins straight from a Git repository (GitHub, GitLab, Bitbucket, Gitea/Forgejo), and download any installed plugin as a zip.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Web9SEO
  * Author URI: https://web9seo.com
  * License: GPLv2 or later
+ * Update URI: https://git.web9.live/pcgraphics/Git-Plugin
  */
 
 defined('ABSPATH') || exit;
+
+require_once __DIR__ . '/includes/web9-updater.php';
 
 class Git_Plugin
 {

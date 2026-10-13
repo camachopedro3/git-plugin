@@ -1,5 +1,6 @@
 <?php
 // Run in the container (needs network): php -d zend.assertions=1 -d assert.exception=1 wp-content/plugins/git-plugin/tests/selfcheck.php
+PHP_SAPI === 'cli' || exit; // CLI only: over the web this would run (and print) for anyone
 require dirname(__DIR__, 4) . '/wp-load.php';
 
 $v = Git_Plugin::remote_version(['repo' => 'https://git.web9.live/pcgraphics/Git-Plugin', 'ref' => ''], 'git-plugin.php');

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Git Plugin
  * Description: Install plugins straight from a Git repository (GitHub, GitLab, Bitbucket, Gitea/Forgejo), keep them updated from it, and download any installed plugin as a zip.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Web9SEO

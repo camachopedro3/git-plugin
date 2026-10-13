@@ -222,7 +222,7 @@ class Git_Plugin
 
         $upgrader = new Plugin_Upgrader(new Plugin_Installer_Skin([
             'type' => 'upload', // gives the "already installed: replace?" comparison screen
-            'title' => sprintf('Installing %s from Git', $job['label']),
+            'title' => sprintf('Installing %s from Git', esc_html($job['label'])),
             'url' => add_query_arg(['action' => self::ACTION, 'package' => $key], self_admin_url('update.php')),
             'overwrite' => $overwrite,
         ]));

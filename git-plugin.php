@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Git Plugin
  * Description: Install plugins straight from a Git repository (GitHub, GitLab, Bitbucket, Gitea/Forgejo), keep them updated from it, and download any installed plugin as a zip.
- * Version: 1.3.2
+ * Version: 1.3.3
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Web9SEO
@@ -46,6 +46,69 @@ class Git_Plugin
         add_filter('plugin_action_links', [__CLASS__, 'download_link'], 10, 2);
         add_filter('network_admin_plugin_action_links', [__CLASS__, 'download_link'], 10, 2);
         add_action('admin_post_git_plugin_download', [__CLASS__, 'download_zip']);
+        add_action('admin_footer-plugins.php', [__CLASS__, 'check_button']);
+        add_action('admin_post_git_plugin_check', [__CLASS__, 'force_check']);
+        add_action('admin_notices', [__CLASS__, 'check_notice']);
+        add_action('network_admin_notices', [__CLASS__, 'check_notice']);
+        add_filter('removable_query_args', function ($args) {
+            $args[] = 'git-plugin-checked'; // so a reload doesn't repeat the notice
+            return $args;
+        });
+    }
+
+    /** "Check for Updates" next to "Add New Plugin" on the Plugins screen. */
+    public static function check_button(): void
+    {
+        if (!current_user_can('update_plugins')) {
+            return;
+        }
+        $url = wp_nonce_url(admin_url('admin-post.php?action=git_plugin_check&back=' . rawurlencode(self_admin_url('plugins.php'))), 'git_plugin_check');
+        ?>
+        <script>
+        (function () {
+            var anchor = document.querySelector('.wrap > .page-title-action') || document.querySelector('.wrap > h1');
+            if (!anchor) { return; }
+            var btn = document.createElement('a');
+            btn.href = <?php echo wp_json_encode($url); ?>;
+            btn.className = 'page-title-action';
+            btn.textContent = 'Check for Updates';
+            btn.addEventListener('click', function () { btn.textContent = 'Checking…'; });
+            anchor.insertAdjacentElement('afterend', btn);
+        })();
+        </script>
+        <?php
+    }
+
+    /** Drop every cached release and re-run WordPress's plugin update check now, instead of within ~12 hours. */
+    public static function force_check(): void
+    {
+        if (!current_user_can('update_plugins')) {
+            wp_die(__('Sorry, you are not allowed to do that.'), 403);
+        }
+        check_admin_referer('git_plugin_check');
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        foreach (get_plugins() as $p) {
+            if (function_exists('web9_updater_repo') && ($repo = web9_updater_repo($p['UpdateURI'] ?? ''))) {
+                delete_site_transient('web9_release_' . md5($repo)); // the shared Web9 updater's 6-hour cache
+            }
+        }
+        delete_site_transient('backinator_release'); // Backinator ships its own updater with its own cache
+        delete_site_transient('update_plugins');
+        wp_update_plugins(); // Git-installed plugins aren't cached: check_updates() asks their repos on every run
+        $back = wp_validate_redirect(wp_unslash($_GET['back'] ?? ''), self_admin_url('plugins.php'));
+        wp_safe_redirect(add_query_arg('git-plugin-checked', 1, $back));
+        exit;
+    }
+
+    public static function check_notice(): void
+    {
+        if (empty($_GET['git-plugin-checked']) || ($GLOBALS['pagenow'] ?? '') !== 'plugins.php') {
+            return;
+        }
+        $n = count((array)(get_site_transient('update_plugins')->response ?? []));
+        echo '<div class="notice notice-success is-dismissible"><p>Checked for updates just now: '
+            . esc_html($n ? sprintf(_n('%d plugin update available.', '%d plugin updates available.', $n), $n) : 'all plugins are up to date.')
+            . '</p></div>';
     }
 
     public static function download_link(array $links, string $file): array

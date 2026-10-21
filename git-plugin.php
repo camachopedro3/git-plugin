@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Git Plugin
- * Description: Install plugins straight from a Git repository (GitHub, GitLab, Bitbucket, Gitea/Forgejo), keep them updated from it, and download any installed plugin as a zip.
- * Version: 1.3.4
+ * Description: Install plugins straight from a Git repository (GitHub, GitLab, Bitbucket, Gitea/Forgejo), keep them updated from it, browse every Web9SEO plugin from Add Plugins, and download any installed plugin as a zip.
+ * Version: 1.4.0
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Web9SEO
@@ -14,6 +14,7 @@
 defined('ABSPATH') || exit;
 
 require_once __DIR__ . '/includes/web9-updater.php';
+require_once __DIR__ . '/includes/catalog.php';
 
 class Git_Plugin
 {
@@ -41,6 +42,7 @@ class Git_Plugin
             return $tabs;
         });
         add_action('admin_footer-plugin-install.php', [__CLASS__, 'panel']);
+        Git_Plugin_Catalog::init();
         // update.php fires update-custom_{action} for actions it doesn't know: the same screen Upload Plugin uses.
         add_action('update-custom_' . self::ACTION, [__CLASS__, 'install']);
         add_filter('plugin_action_links', [__CLASS__, 'download_link'], 10, 2);
@@ -93,6 +95,7 @@ class Git_Plugin
             }
         }
         delete_site_transient('backinator_release'); // Backinator ships its own updater with its own cache
+        delete_site_transient(Git_Plugin_Catalog::CACHE); // so the Web9SEO tab shows new versions too
         delete_site_transient('update_plugins');
         wp_update_plugins(); // Git-installed plugins aren't cached: check_updates() asks their repos on every run
         $back = wp_validate_redirect(wp_unslash($_GET['back'] ?? ''), self_admin_url('plugins.php'));

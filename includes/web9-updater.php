@@ -4,6 +4,7 @@
  *
  * A plugin whose header says "Update URI: https://git.web9.live/<owner>/<repo>" updates from that public Forgejo repo:
  * from the latest Release (a .zip asset wins over the source archive), else from the highest vX.Y.Z tag.
+ * The changelog is built from the version tags' messages, so `git tag -a v1.2.3 -m "1.2.3: what changed"` writes it.
  * Git checkouts (dev copies) never self-update. Several plugins may bundle this file; the first one loaded
  * registers the hooks for all of them.
  */
@@ -26,6 +27,31 @@ if ( ! function_exists( 'web9_updater_repo' ) ) {
 		return isset( $all[ $plugin ] ) ? web9_updater_repo( $all[ $plugin ]['UpdateURI'] ?? '' ) : '';
 	}
 
+	/** Changelog HTML from version tag messages, newest first; tags without a message are left out. */
+	function web9_updater_changelog( $tags ) {
+		$entries = array();
+		foreach ( $tags as $t ) {
+			$v = ltrim( $t['name'] ?? '', 'vV' );
+			if ( ! preg_match( '/^\d+(\.\d+)*$/', $v ) ) {
+				continue;
+			}
+			// Drop trailers (Co-Authored-By: …) and the "Name 1.2.3:" the first line opens with.
+			$msg = trim( preg_replace( '/^[\w-]+-by:.*$/mi', '', (string) ( $t['message'] ?? '' ) ) );
+			$msg = trim( preg_replace( '/^[^\n]*?v?' . preg_quote( $v, '/' ) . '\s*[:\x{2013}\x{2014}-]?\s*/u', '', $msg, 1 ) );
+			if ( '' !== $msg ) {
+				$entries[ $v ] = $msg;
+			}
+		}
+		uksort( $entries, function ( $a, $b ) {
+			return version_compare( $b, $a );
+		} );
+		$html = '';
+		foreach ( $entries as $v => $msg ) {
+			$html .= '<h4>' . esc_html( $v ) . '</h4>' . wpautop( esc_html( $msg ) );
+		}
+		return $html;
+	}
+
 	function web9_updater_release( $repo ) {
 		$key    = 'web9_release_' . md5( $repo );
 		$cached = get_site_transient( $key );
@@ -37,11 +63,12 @@ if ( ! function_exists( 'web9_updater_repo' ) ) {
 			return is_wp_error( $res ) || 200 !== wp_remote_retrieve_response_code( $res ) ? null : json_decode( wp_remote_retrieve_body( $res ), true );
 		};
 
+		$tags = (array) $api( '/tags?limit=50' );
 		$data = $api( '/releases/latest' );
 		if ( ! is_array( $data ) || empty( $data['tag_name'] ) ) {
 			// No published Release: a pushed version tag is enough.
 			$best = null;
-			foreach ( (array) $api( '/tags?limit=50' ) as $t ) {
+			foreach ( $tags as $t ) {
 				$v = ltrim( $t['name'] ?? '', 'vV' );
 				if ( preg_match( '/^\d+(\.\d+)*$/', $v ) && ( ! $best || version_compare( $v, ltrim( $best['name'], 'vV' ), '>' ) ) ) {
 					$best = $t;
@@ -64,11 +91,12 @@ if ( ! function_exists( 'web9_updater_repo' ) ) {
 				}
 			}
 			$release = array(
-				'version' => ltrim( $data['tag_name'], 'vV' ),
-				'package' => $package,
-				'url'     => $data['html_url'] ?? "https://git.web9.live/$repo",
-				'notes'   => (string) ( $data['body'] ?? '' ),
-				'date'    => $data['published_at'] ?? '',
+				'version'   => ltrim( $data['tag_name'], 'vV' ),
+				'package'   => $package,
+				'url'       => $data['html_url'] ?? "https://git.web9.live/$repo",
+				'notes'     => (string) ( $data['body'] ?? '' ),
+				'changelog' => web9_updater_changelog( $tags ),
+				'date'      => $data['published_at'] ?? '',
 			);
 		}
 		// Failures are cached too (as []), so an unreachable server doesn't slow every admin page.
@@ -84,7 +112,8 @@ if ( ! function_exists( 'web9_updater_repo' ) ) {
 				return $update;
 			}
 			$r = web9_updater_release( $repo );
-			if ( ! $r || ! $r['package'] || version_compare( $r['version'], $data['Version'], '<=' ) ) {
+			// Up-to-date plugins are reported too: core files them under no_update, which gives the row its "View details" link.
+			if ( ! $r || ( ! $r['package'] && version_compare( $r['version'], $data['Version'], '>' ) ) ) {
 				return $update;
 			}
 			return array(
@@ -122,7 +151,10 @@ if ( ! function_exists( 'web9_updater_repo' ) ) {
 					'homepage'      => $r['url'],
 					'last_updated'  => $r['date'],
 					'download_link' => $r['package'],
-					'sections'      => array( 'changelog' => wpautop( esc_html( $r['notes'] ? $r['notes'] : 'See ' . $r['url'] ) ) ),
+					'sections'      => array(
+						'description' => wpautop( esc_html( wp_strip_all_tags( $p['Description'] ) ) ),
+						'changelog'   => ! empty( $r['changelog'] ) ? $r['changelog'] : wpautop( esc_html( $r['notes'] ? $r['notes'] : 'See ' . $r['url'] ) ),
+					),
 				);
 			}
 			return $result;

@@ -9,7 +9,7 @@ defined('ABSPATH') || exit;
 class Git_Plugin_Catalog
 {
     const TAB = 'web9';
-    const CACHE = 'git_plugin_catalog';
+    const CACHE = 'git_plugin_catalog_2'; // bumped when the cached shape changes
 
     public static function init(): void
     {
@@ -27,7 +27,7 @@ class Git_Plugin_Catalog
         return untrailingslashit(apply_filters('git_plugin_catalog_owner', 'https://git.web9.live/pcgraphics'));
     }
 
-    /** @return array<int, array{repo: string, url: string, name: string, description: string, version: string, main: string}>|null */
+    /** @return array<int, array{repo: string, url: string, name: string, description: string, version: string, main: string, icon: string}>|null */
     public static function plugins(): ?array
     {
         $cached = get_site_transient(self::CACHE);
@@ -78,7 +78,8 @@ class Git_Plugin_Catalog
     private static function find_plugin(callable $api, string $base, array $r): ?array
     {
         $files = [];
-        foreach ((array)$api('repos/' . $r['full_name'] . '/contents/?ref=' . rawurlencode($r['default_branch'])) as $f) {
+        $root = (array)$api('repos/' . $r['full_name'] . '/contents/?ref=' . rawurlencode($r['default_branch']));
+        foreach ($root as $f) {
             if (($f['type'] ?? '') === 'file' && substr($f['name'], -4) === '.php') {
                 $files[] = $f['name'];
             }
@@ -108,10 +109,49 @@ class Git_Plugin_Catalog
                     'description' => $field('Description') !== '' ? $field('Description') : (string)$r['description'],
                     'version' => $field('Version'),
                     'main' => $file,
+                    'icon' => self::icon($api, $base, $r, $root),
                 ];
             }
         }
         return null;
+    }
+
+    /**
+     * Card icon: the repo's avatar set in the Git host, else an icon file named the wordpress.org way
+     * (root, assets/ or .wordpress-org/), else '' for a generated tile.
+     */
+    private static function icon(callable $api, string $base, array $r, array $root): string
+    {
+        if (!empty($r['avatar_url'])) {
+            return $r['avatar_url'];
+        }
+        $names = ['icon-256x256.png', 'icon-256x256.jpg', 'icon-128x128.png', 'icon-128x128.jpg', 'icon.svg', 'icon.png'];
+        $dirs = ['' => $root];
+        foreach ($root as $f) {
+            if (($f['type'] ?? '') === 'dir' && in_array($f['name'], ['assets', '.wordpress-org'], true)) {
+                $dirs[$f['name'] . '/'] = (array)$api('repos/' . $r['full_name'] . '/contents/' . $f['name'] . '?ref=' . rawurlencode($r['default_branch']));
+            }
+        }
+        foreach ($names as $name) {
+            foreach ($dirs as $dir => $list) {
+                if (in_array($name, array_column($list, 'name'), true)) {
+                    return $base . '/' . $r['full_name'] . '/raw/branch/' . rawurlencode($r['default_branch']) . '/' . $dir . $name;
+                }
+            }
+        }
+        return '';
+    }
+
+    /** A 128px tile with the plugin's initials, its color picked from the name so it stays the same everywhere. */
+    private static function tile(string $name): string
+    {
+        $words = preg_split('/[\s_-]+/', trim($name), -1, PREG_SPLIT_NO_EMPTY) ?: ['?'];
+        $initials = strtoupper(substr($words[0], 0, 1) . (isset($words[1]) ? substr($words[1], 0, 1) : ''));
+        $hue = crc32($name) % 360;
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" fill="hsl(' . $hue . ',55%,45%)"/>'
+            . '<text x="64" y="64" dy=".35em" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="' . (strlen($initials) > 1 ? 52 : 64)
+            . '" font-weight="600" fill="#fff">' . esc_html($initials) . '</text></svg>';
+        return 'data:image/svg+xml;base64,' . base64_encode($svg);
     }
 
     /** Installed plugin file for a catalog repo: matched by Update URI or by the repo Git Plugin installed it from. */
@@ -156,7 +196,8 @@ class Git_Plugin_Catalog
             <div class="plugin-card">
                 <div class="plugin-card-top">
                     <div class="name column-name">
-                        <h3><a href="<?php echo esc_url($item['url']); ?>" target="_blank" rel="noopener"><?php echo esc_html($item['name']); ?></a></h3>
+                        <h3><a href="<?php echo esc_url($item['url']); ?>" target="_blank" rel="noopener"><?php echo esc_html($item['name']); ?>
+                            <img src="<?php echo esc_url(($item['icon'] ?? '') !== '' ? $item['icon'] : self::tile($item['name']), ['https', 'http', 'data']); ?>" class="plugin-icon" alt=""></a></h3>
                     </div>
                     <div class="action-links">
                         <ul class="plugin-action-buttons"><li><?php self::button($item, $file, $installed); ?></li></ul>
@@ -187,8 +228,6 @@ class Git_Plugin_Catalog
         <style>
             .git-plugin-catalog-intro { margin: 1em 0; }
             .git-plugin-catalog { display: flex; flex-wrap: wrap; }
-            .git-plugin-catalog .plugin-card .name, .git-plugin-catalog .plugin-card .desc { margin-left: 0; }
-            .git-plugin-catalog .plugin-card-top { min-height: 0; }
             .git-plugin-catalog form { display: inline; }
         </style>
         <?php

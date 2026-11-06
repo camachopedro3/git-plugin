@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Git Plugin
  * Description: Install plugins straight from a Git repository (GitHub, GitLab, Bitbucket, Gitea/Forgejo), keep them updated from it, browse every Web9SEO plugin from Add Plugins, and download any installed plugin as a zip.
- * Version: 1.4.1
+ * Version: 1.4.2
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Web9SEO
@@ -94,7 +94,10 @@ class Git_Plugin
                 delete_site_transient('web9_release_' . md5($repo)); // the shared Web9 updater's 6-hour cache
             }
         }
-        delete_site_transient('backinator_release'); // Backinator ships its own updater with its own cache
+        // These plugins ship their own updaters with their own caches.
+        foreach (['backinator_release', 'formulator_release', 'kpb_release'] as $cache) {
+            delete_site_transient($cache);
+        }
         delete_site_transient(Git_Plugin_Catalog::CACHE); // so the Web9SEO tab shows new versions too
         delete_site_transient('update_plugins');
         wp_update_plugins(); // Git-installed plugins aren't cached: check_updates() asks their repos on every run
